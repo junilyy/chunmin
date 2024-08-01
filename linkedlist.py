@@ -43,4 +43,4 @@ while node:
     print(node.val)
     node=node.next
 
-#하하
+#바꿨다
