@@ -45,3 +45,5 @@ while node:
 
 #ㅎㅇ
 asdflajsdf;ljadsf;lkjakdfl
+
+#이준영 바보
