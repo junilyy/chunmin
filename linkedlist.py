@@ -44,6 +44,5 @@ while node:
     node=node.next
 
 #ㅎㅇ
-asdflajsdf;ljadsf;lkjakdfl
-
-#이준영 바보, 최유찬 안바보, 정희원 바보
+#git add 하고 싶어요..
+#언터쳐블 밖
