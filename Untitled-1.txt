@@ -1,0 +1,242 @@
+intRegs = ["R" + str(i) for i in range(0, 16, 1)]   # R0-R15
+
+FPRegs = ["F" + str(i) for i in range(0, 16, 2)]    # F0-F15
+
+regResultStatus = {reg: "" for reg in intRegs + FPRegs}
+
+
+
+class Instruction:
+    def __init__(self, FUname, opcode, dest, source1, source2):
+        self.FUname = FUname
+        self.opcode = opcode
+        self.dest = dest
+        self.source1 = source1
+        self.source2 = source2
+        self.issuedAt = None
+        self.readOperandAt = None
+        self.execCompletedAt = None
+        self.wroteResultAt = None
+
+class ScoreboardEntry:
+    def __init__(self, Name: str, Busy: bool, Op, Fi: str, Fj: str, Fk: str, Qj: str, Qk: str, Rj: bool, Rk: bool, inst:Instruction):
+        self.Name = Name
+        self.Busy = Busy
+        self.Op = Op
+        self.Fi = Fi
+        self.Fj = Fj
+        self.Fk = Fk
+        self.Qj = Qj
+        self.Qk = Qk
+        self.Rj = Rj
+        self.Rk = Rk
+        self.Time = None
+        self.inst = inst
+
+def case1():
+    instructions = [
+        Instruction("Integer", "Load", "F6", None, "R2"), # Load  F6, X(R2)
+        Instruction("Integer", "Load", "F2", None, "R3"), # Load  F2, Y(R3)
+        Instruction("Mult", "Mult", "F0", "F2", "F4"),    # Mul   F0, F2, F4
+        Instruction("Add", "Sub", "F8", "F2", "F6"),      # Sub   F8, F2, F6
+        Instruction("Divide", "Div", "F10", "F0", "F6"),  # Div   F10, F0, F6
+        Instruction("Add", "Add", "F6", "F8", "F2"),      # Add   F6, F8, F2
+    ]
+    return instructions
+
+def case2():
+    instructions = [
+        Instruction("Add", "Add", "F2", "F0", "F8"),       # Add   F2, F0, F8
+        Instruction("Add", "Sub", "F2", "F2", "F10"),      # Sub   F2, F2, F10 waw raw structural
+        Instruction("Integer", "Load", "F10", None, "R2"), # Load  F10, X(R2) war
+        Instruction("Divide", "Div", "F10", "F10", "F4"),  # Div F10, F10, F4 waw raw
+        Instruction("Add", "Add", "F12", "F10", "F6"),     # Add   F12, F10, F6 raw
+        Instruction("Integer", "Store", "F14", None, "R3"), # Store F14, Y(R3)
+    ]
+    return instructions
+
+def fill_instructions():
+    return case1()
+
+
+scoreboard = {
+    "Integer": ScoreboardEntry("Integer", False, None, None, None, None, None, None, None, None, None),
+    "Mult": ScoreboardEntry("Mult", False, None, None, None, None, None, None, None, None, None),
+    "Add": ScoreboardEntry("Add", False, None, None, None, None, None, None, None, None, None),
+    "Divide": ScoreboardEntry("Divide", False, None, None, None, None, None, None, None, None, None),
+}
+
+latencies = {
+    "Integer": 1,
+    "Mult":    10,
+    "Add":     2,
+    "Divide":  40,
+}
+
+
+def check_issue(inst):
+    ready = True
+
+    if scoreboard[inst.FUname].Busy:
+        ready=False
+
+    if regResultStatus[inst.dest]:
+        ready=False
+
+    return ready
+
+def check_read(FU):
+    ready = True
+
+    if FU.Fj and not FU.Rj:
+        ready = False
+
+    if FU.Fk and not FU.Rk:
+        ready =False
+
+    return ready
+
+def check_write(FU):
+    ready = True
+
+    for entry in scoreboard.values():
+        if entry.Fi == FU.Fi and entry.inst != FU.inst:
+                ready = False
+
+    return ready
+
+def fs(s):
+    return str(s) if s is not None else ""
+
+def print_inst(insts: list[Instruction]):
+    print("inst.".ljust(18), "| I | R | E | W |")
+    print("------------------------------------")
+    for item in insts:
+        print('{:<5}{:<5}{:<5}{:<5}{:<4}{:<4}{:<4}{:<4}'.format(
+            *map(fs, (item.opcode, item.dest, item.source1, item.source2,
+                      item.issuedAt, item.readOperandAt,
+                      item.execCompletedAt, item.wroteResultAt
+                      )
+                )
+            ))
+    print()
+
+def print_scoreboard(sc: dict[ScoreboardEntry]):
+    print("Name".ljust(12), "Time | Busy |  Op  |  Fi  |  Fj  |  Fk  |   Qj   |   Qk   |  Rj  |  Rk  |")
+    print("-------------------------------------------------------------------------------------------")
+    for item in sc.values():
+        print(str(item.Name).ljust(12),
+              '{:<7}{:<7}{:<7}{:<7}{:<7}{:<7}{:<9}{:<9}{:<7}{:<10}'.format(
+                  *map(fs, (item.Time, item.Busy, item.Op,
+                            item.Fi, item.Fj, item.Fk, item.Qj, item.Qk,
+                            item.Rj, item.Rk
+                            )
+                        )
+                )
+            )
+    print()
+
+def print_regstatus(regstatus):
+    for r, s in [("R", 1), ("F", 2)]:
+        status = [
+            v for (k, v) in sorted(
+                regstatus.items(), key=lambda x:int(x[0][1:]))
+            if k[0] == r
+        ]
+        titleBar = "Reg.  |   " + "   |   ".join(
+            [r + str(i) for i in range(0, 16, s)]
+        ) + "   |"
+        print(titleBar)
+        print("-" * len(titleBar))
+        print(("FU      " + len(status) * "{:<9}").format(*status))
+        print()
+
+
+cycle = 0
+idx = 0
+instructions = fill_instructions()
+
+while not all(value.wroteResultAt for value in instructions):
+    cycle += 1
+
+    # Issue Stage
+    if idx < len(instructions) and check_issue(instructions[idx]):
+        targetInst = instructions[idx]
+        targetFU = targetInst.FUname
+        scoreboard[targetFU].Busy = True
+        scoreboard[targetFU].Op = targetInst.opcode
+        scoreboard[targetFU].Fi = targetInst.dest
+        scoreboard[targetFU].Fj = targetInst.source1
+        scoreboard[targetFU].Fk = targetInst.source2
+        if targetInst.source1 is not None:
+            if regResultStatus[targetInst.source1]:
+                scoreboard[targetFU].Qj = regResultStatus[targetInst.source1]
+                scoreboard[targetFU].Rj = False
+            else:
+                scoreboard[targetFU].Rj = True
+        if targetInst.source2 is not None:
+            if regResultStatus[targetInst.source2]:
+                scoreboard[targetFU].Qk = regResultStatus[targetInst.source2]
+                scoreboard[targetFU].Rk = False
+            else:
+                scoreboard[targetFU].Rk = True
+
+        scoreboard[targetFU].inst = targetInst
+        targetInst.issuedAt = cycle
+        regResultStatus[targetInst.dest] = targetInst.FUname
+        idx += 1
+
+    # Read Operand Stage
+    for FU in scoreboard.values():
+        if FU.inst and FU.inst.issuedAt and FU.inst.issuedAt < cycle and not FU.inst.readOperandAt:
+            if check_read(FU):
+                FU.inst.readOperandAt = cycle
+
+    # Execute Stage
+    execlist = []
+    for FU in scoreboard.values():
+        if FU.inst and FU.inst.readOperandAt and FU.inst.readOperandAt < cycle and not FU.inst.execCompletedAt:
+            execlist.append(FU)
+
+    for FU in execlist:
+        if not scoreboard[FU.Name].Time:
+            scoreboard[FU.Name].Time = latencies[FU.Name] - 1
+            if scoreboard[FU.Name].Rj:
+                scoreboard[FU.Name].Rj = False
+            if scoreboard[FU.Name].Rk:
+                scoreboard[FU.Name].Rk = False
+        else:
+            scoreboard[FU.Name].Time -= 1
+
+        if scoreboard[FU.Name].Time == 0:
+            FU.inst.execCompletedAt = cycle
+
+    # Write Result Stage
+    writelist = []
+    for FU in scoreboard.values():
+
+        if FU.inst and FU.inst.execCompletedAt and FU.inst.execCompletedAt < cycle and check_write(FU):
+            writelist.append(FU)
+
+    for FU in writelist:
+        for value in scoreboard.values():
+            if value.Qj == FU.Name and value.Rj is False:
+                value.Rj = True
+                value.Qj = None
+
+            if value.Qk == FU.Name and value.Rk is False:
+                value.Rk = True
+                value.Qk = None
+
+        regResultStatus[FU.Fi] = ''
+        FU.inst.wroteResultAt = cycle
+        scoreboard[FU.Name] = ScoreboardEntry(FU.Name, False, None, None, None, None, None, None, None, None, None)
+
+    print("Cycle:", cycle)
+    print_inst(instructions)
+    print_scoreboard(scoreboard)
+    print_regstatus(regResultStatus)
+    print("\n")
+
+    # You might want to uncomment the following line for debugging purposes.
+    input()
